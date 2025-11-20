@@ -48,3 +48,5 @@ expression: null
 embed_trainable: false
 
 group_collection_max_dk: 0
+
+use_inner_product_act: false

@@ -171,7 +171,7 @@ class StatsTracker:
 
 # Define the neural network model
 class ModularAdditionNN(nn.Module):
-    def __init__(self, M, num_of_ops, hidden_size, activation="sqr", embed_trainable=False, use_bn=False, inverse_mat_layer_reg=None, other_layers=0):
+    def __init__(self, M, num_of_ops, hidden_size, activation="sqr", embed_trainable=False, use_bn=False, inverse_mat_layer_reg=None, other_layers=0, use_inner_product_act=False):
         super(ModularAdditionNN, self).__init__()
         if not embed_trainable:
             self.embedding = nn.Embedding(M, M).requires_grad_(False)
@@ -179,12 +179,17 @@ class ModularAdditionNN(nn.Module):
                 self.embedding.weight[:] = torch.eye(M, M)
         else:
             self.embedding = nn.Embedding(M, M)
-            
-        self.W = nn.Linear(num_of_ops*M, hidden_size, bias=False)
+
+        if use_inner_product_act:
+            self.Ws = nn.ModuleList([ nn.Linear(M, hidden_size, bias=False) for _ in range(num_of_ops) ])
+        else: 
+            self.W = nn.Linear(num_of_ops*M, hidden_size, bias=False)
+
         self.other_layers = nn.ModuleList([ nn.Linear(hidden_size, hidden_size, bias=False) for _ in range(other_layers) ])
         self.V = nn.Linear(hidden_size, M, bias=False)
 
         self.num_other_layers = other_layers
+        self.use_inner_product_act = use_inner_product_act
 
         if use_bn:
             self.bn = nn.BatchNorm1d(hidden_size)
@@ -211,13 +216,20 @@ class ModularAdditionNN(nn.Module):
     
     def forward(self, x, Y=None, stats_tracker=None):
         assert x.shape[1] == self.num_of_ops, f"x.shape[1] = {x.shape[1]} != {self.num_of_ops}"
-        embed_concat = torch.concat([self.embedding(x[:,i]) for i in range(self.num_of_ops)], dim=1) 
         # x = torch.relu(self.layer1(x))
-        x = self.W(embed_concat) 
-        if self.use_bn:
-            x = self.bn(x)
 
-        x = self.act_fun(x)
+        if self.use_inner_product_act:
+            results = [ self.Ws[i](self.embedding(x[:,i])) for i in range(self.num_of_ops) ]
+            # Then do inner product and sum up
+            x = torch.stack(results, dim=2)
+            x = x.prod(dim=2)
+        else:
+            embed_concat = torch.concat([self.embedding(x[:,i]) for i in range(self.num_of_ops)], dim=1) 
+            x = self.W(embed_concat) 
+            if self.use_bn:
+                x = self.bn(x)
+
+            x = self.act_fun(x)
 
         self.x_before_layerc = x.clone()
 
@@ -287,8 +299,14 @@ class ModularAdditionNN(nn.Module):
 
     def normalize(self):
         with torch.no_grad():
-            self.W.weight[:] -= self.W.weight.mean(dim=1, keepdim=True) 
-            self.V.weight[:] -= self.V.weight.mean(dim=0, keepdim=True) 
+            if self.use_inner_product_act:
+                for W in self.Ws:
+                    # If the weight norm is > 1, scale down to 1, otherwise don't normalize
+                    norms = W.weight.norm(dim=1, keepdim=True)
+                    W.weight[:] /= norms.clamp(min=1)
+            else:
+                self.W.weight[:] -= self.W.weight.mean(dim=1, keepdim=True) 
+                self.V.weight[:] -= self.V.weight.mean(dim=0, keepdim=True) 
 
     def scale_down_top(self):
         # Scale down the top layer
@@ -377,7 +395,8 @@ def main(args):
                               activation=args.activation, 
                               use_bn=args.use_bn, 
                               inverse_mat_layer_reg=args.set_weight_reg, 
-                              other_layers=args.other_layers)
+                              other_layers=args.other_layers,
+                              use_inner_product_act=args.use_inner_product_act)
 
     model = model.cuda()
 
