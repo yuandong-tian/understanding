@@ -31,9 +31,12 @@ def compute_diag_off_diag_avg(kernel):
 
 def fit_diag_11(kernel):
     # fit the diagonal to be 1 and the off-diagonal to be 1/10
+    # For complex kernels, work with real part
+    if kernel.is_complex():
+        kernel = kernel.real
     diagonal_mean = kernel.diag().mean().item()
     off_diag_mean = (kernel.sum() - kernel.diag().sum()) / (kernel.shape[0] * (kernel.shape[0] - 1))
-    estimated_kernel = (diagonal_mean - off_diag_mean) * torch.eye(kernel.shape[0]).to(kernel.device) + off_diag_mean 
+    estimated_kernel = (diagonal_mean - off_diag_mean) * torch.eye(kernel.shape[0], dtype=kernel.dtype).to(kernel.device) + off_diag_mean 
     return torch.norm(estimated_kernel - kernel) / torch.norm(kernel)
 
 # Define the modular addition function
@@ -129,6 +132,9 @@ nll_criterion = nn.CrossEntropyLoss().cuda()
 def compute_loss(outputs, labels, loss_type):
     loss = 0
     for i, o in enumerate(outputs):
+        # Convert complex to real if needed (take real part)
+        if o.is_complex():
+            o = o.real
         if loss_type == "nll":
             loss = loss + nll_criterion(o, labels[:,i])
         elif loss_type == "mse":
@@ -145,7 +151,9 @@ def test_model(model, X_test, y_test, loss_type):
         outputs = model(X_test)
         corrects = [None] * len(outputs)
         for (i, o) in enumerate(outputs):
-            _, predicted = torch.max(o.data, 1)
+            # Convert complex to real if needed (take real part) for max operation
+            o_real = o.real if o.is_complex() else o
+            _, predicted = torch.max(o_real.data, 1)
             corrects[i] = (predicted == y_test[:,i]).sum().item() / y_test.size(0)
 
         loss = compute_loss(outputs, y_test, loss_type).item()
@@ -171,8 +179,10 @@ class StatsTracker:
 
 # Define the neural network model
 class ModularAdditionNN(nn.Module):
-    def __init__(self, M, num_of_ops, hidden_size, activation="sqr", embed_trainable=False, use_bn=False, inverse_mat_layer_reg=None, other_layers=0, use_inner_product_act=False):
+    def __init__(self, M, num_of_ops, hidden_size, activation="sqr", embed_trainable=False, use_bn=False, inverse_mat_layer_reg=None, other_layers=0, use_inner_product_act=False, use_complex_weights=False):
         super(ModularAdditionNN, self).__init__()
+        self.use_complex_weights = use_complex_weights
+        
         if not embed_trainable:
             self.embedding = nn.Embedding(M, M).requires_grad_(False)
             with torch.no_grad():
@@ -188,14 +198,31 @@ class ModularAdditionNN(nn.Module):
         self.other_layers = nn.ModuleList([ nn.Linear(hidden_size, hidden_size, bias=False) for _ in range(other_layers) ])
         self.V = nn.Linear(hidden_size, M, bias=False)
 
+        # Convert weights to complex if needed
+        if use_complex_weights:
+            log.debug("Using complex weights!")
+            if use_inner_product_act:
+                for W in self.Ws:
+                    W.weight.data = W.weight.data.to(torch.cfloat)
+            else:
+                self.W.weight.data = self.W.weight.data.to(torch.cfloat)
+            
+            for layer in self.other_layers:
+                layer.weight.data = layer.weight.data.to(torch.cfloat)
+            
+            self.V.weight.data = self.V.weight.data.to(torch.cfloat)
+
         self.num_other_layers = other_layers
         self.use_inner_product_act = use_inner_product_act
 
-        if use_bn:
+        if use_bn and not use_complex_weights:
+            # BatchNorm doesn't support complex tensors
             self.bn = nn.BatchNorm1d(hidden_size)
             self.use_bn = True
         else:
             self.use_bn = False
+            if use_bn and use_complex_weights:
+                log.debug("BatchNorm is disabled when using complex weights (not supported)")
 
         self.relu = nn.ReLU()
         self.num_of_ops = num_of_ops
@@ -219,12 +246,19 @@ class ModularAdditionNN(nn.Module):
         # x = torch.relu(self.layer1(x))
 
         if self.use_inner_product_act:
-            results = [ self.Ws[i](self.embedding(x[:,i])) for i in range(self.num_of_ops) ]
+            embeddings = [self.embedding(x[:,i]) for i in range(self.num_of_ops)]
+            # Convert embeddings to complex if using complex weights
+            if self.use_complex_weights:
+                embeddings = [emb.to(torch.cfloat) for emb in embeddings]
+            results = [ self.Ws[i](embeddings[i]) for i in range(self.num_of_ops) ]
             # Then do inner product and sum up
             x = torch.stack(results, dim=2)
             x = x.prod(dim=2)
         else:
-            embed_concat = torch.concat([self.embedding(x[:,i]) for i in range(self.num_of_ops)], dim=1) 
+            embed_concat = torch.concat([self.embedding(x[:,i]) for i in range(self.num_of_ops)], dim=1)
+            # Convert embedding to complex if using complex weights
+            if self.use_complex_weights:
+                embed_concat = embed_concat.to(torch.cfloat)
             x = self.W(embed_concat) 
             if self.use_bn:
                 x = self.bn(x)
@@ -236,22 +270,37 @@ class ModularAdditionNN(nn.Module):
         if stats_tracker is not None:
             x_zero_mean = x - x.mean(dim=0, keepdim=True)
             # Use simple matrix inversion
-            kernel = x_zero_mean.t() @ x_zero_mean 
+            if self.use_complex_weights:
+                kernel = x_zero_mean.conj().t() @ x_zero_mean
+            else:
+                kernel = x_zero_mean.t() @ x_zero_mean
             diag_avg, off_diag_avg = compute_diag_off_diag_avg(kernel)
-            log.warning(f"~F^t ~F: diag_avg = {diag_avg}, off_diag_avg = {off_diag_avg}, off_diag_avg / diag_avg = {off_diag_avg / diag_avg}")
+            log.debug(f"~F^t ~F: diag_avg = {diag_avg}, off_diag_avg = {off_diag_avg}, off_diag_avg / diag_avg = {off_diag_avg / diag_avg}")
 
-            kernel2 = x @ x.t()
+            if self.use_complex_weights:
+                kernel2 = x @ x.conj().t()
+            else:
+                kernel2 = x @ x.t()
             dist_from_ideal = fit_diag_11(kernel2)
             # zero mean
             kernel2 = kernel2 - kernel2.mean(dim=0, keepdim=True)
             diag_avg2, off_diag_avg2 = compute_diag_off_diag_avg(kernel2)
-            log.warning(f"F F^t: diag_avg = {diag_avg2}, off_diag_avg = {off_diag_avg2}, off_diag_avg / diag_avg = {off_diag_avg2 / diag_avg2}, distance from ideal, {dist_from_ideal}")
+            log.debug(f"F F^t: diag_avg = {diag_avg2}, off_diag_avg = {off_diag_avg2}, off_diag_avg / diag_avg = {off_diag_avg2 / diag_avg2}, distance from ideal, {dist_from_ideal}")
 
             # backpropagated gradient norm
             if self.num_other_layers == 0:
-                residual = Y - self.V(x)
-                backprop_grad_norm = torch.norm(residual @ self.V.weight) 
-                log.warning(f"Backpropagated gradient norm: {backprop_grad_norm}")
+                Vx = self.V(x)
+                if self.use_complex_weights:
+                    # Convert Y to complex and compute residual in complex domain
+                    Y_complex = Y.to(torch.cfloat)
+                    residual = Y_complex - Vx
+                    # For complex weights, compute gradient norm using the complex weight
+                    # The gradient w.r.t. complex weight is computed in complex domain
+                    backprop_grad_norm = torch.norm(residual @ self.V.weight)
+                else:
+                    residual = Y - Vx
+                    backprop_grad_norm = torch.norm(residual @ self.V.weight) 
+                log.debug(f"Backpropagated gradient norm: {backprop_grad_norm}")
             else:
                 backprop_grad_norm = None
 
@@ -280,22 +329,34 @@ class ModularAdditionNN(nn.Module):
                     # 
                     # self.V.weight[:] = (Vt.t() @ ((U.t() @ Y) / (s[:,None] + self.inverse_mat_layer_reg))).t()
                     reg_diag = s / (s.pow(2) + self.inverse_mat_layer_reg)
-                    log.warning(f"Using SVD, singular value [min, max] are {s.min(), s.max()}, inverse_mat_layer_reg is {self.inverse_mat_layer_reg}")
+                    log.debug(f"Using SVD, singular value [min, max] are {s.min(), s.max()}, inverse_mat_layer_reg is {self.inverse_mat_layer_reg}")
                     if update_weightc:
-                        self.V.weight[:] = (Vt.t() @ ((U.t() @ Y) * reg_diag[:,None])).t()
+                        if self.use_complex_weights:
+                            self.V.weight[:] = (Vt.conj().t() @ ((U.conj().t() @ Y.to(torch.cfloat)) * reg_diag[:,None])).t()
+                        else:
+                            self.V.weight[:] = (Vt.t() @ ((U.t() @ Y) * reg_diag[:,None])).t()
                 else:
-                    kernel = x.t() @ x
+                    if self.use_complex_weights:
+                        kernel = x.conj().t() @ x
+                    else:
+                        kernel = x.t() @ x
                     # Check if the kernel scale is the same as the self.inverse_mat_layer_reg
                     kernel_scale = kernel.diag().mean().item()
-                    log.warning(f"Kernel scale is {kernel_scale}, inverse_mat_layer_reg is {self.inverse_mat_layer_reg}")
+                    log.debug(f"Kernel scale is {kernel_scale}, inverse_mat_layer_reg is {self.inverse_mat_layer_reg}")
                     if update_weightc:
-                        self.V.weight[:] = (torch.linalg.inv(kernel + self.inverse_mat_layer_reg * torch.eye(x.shape[1]).to(x.device)) @ x.t() @ Y).t()
+                        eye_mat = torch.eye(x.shape[1], dtype=x.dtype).to(x.device)
+                        if self.use_complex_weights:
+                            self.V.weight[:] = (torch.linalg.inv(kernel + self.inverse_mat_layer_reg * eye_mat) @ x.conj().t() @ Y.to(torch.cfloat)).t()
+                        else:
+                            self.V.weight[:] = (torch.linalg.inv(kernel + self.inverse_mat_layer_reg * eye_mat) @ x.t() @ Y).t()
 
         for layer in self.other_layers:
             x = x + layer(x)
             x = self.act_fun(x)
 
-        return [self.V(x)]
+        output = self.V(x)
+        
+        return [output]
 
     def normalize(self):
         with torch.no_grad():
@@ -396,7 +457,8 @@ def main(args):
                               use_bn=args.use_bn, 
                               inverse_mat_layer_reg=args.set_weight_reg, 
                               other_layers=args.other_layers,
-                              use_inner_product_act=args.use_inner_product_act)
+                              use_inner_product_act=args.use_inner_product_act,
+                              use_complex_weights=args.use_complex_weights)
 
     model = model.cuda()
 
