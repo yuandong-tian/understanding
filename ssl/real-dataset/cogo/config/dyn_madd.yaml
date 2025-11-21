@@ -5,6 +5,16 @@ M: "127"
 hidden_size: 512
 learning_rate: 0.001
 
+# Learning rate decay settings
+# lr_decay_type: "step" (decay by lr_decay_rate every lr_decay_step epochs)
+#                 "exponential" (decay by lr_decay_rate every epoch)
+#                 "cosine" (cosine annealing)
+#                 "none" (no decay)
+lr_decay_type: "none"
+lr_decay_rate: 0.1
+lr_decay_step: 1000
+lr_decay_milestones: [1000]  # for "multistep" type
+
 # Adam or sgd
 optim: adam 
 

@@ -1,4 +1,3 @@
-from ast import Tuple
 from collections import defaultdict
 import json
 import os
@@ -325,6 +324,7 @@ class ModularAdditionNN(nn.Module):
                 if use_svd:
                     # Compute the SVD of input 
                     U, s, Vt = torch.linalg.svd(x, full_matrices=False)
+                    log.info(f"Using SVD, singular value [min, max] are {s.min(), s.max()}, inverse_mat_layer_reg is {self.inverse_mat_layer_reg}")
                     # Then we invert to get W.  
                     # 
                     # self.V.weight[:] = (Vt.t() @ ((U.t() @ Y) / (s[:,None] + self.inverse_mat_layer_reg))).t()
@@ -486,6 +486,26 @@ def main(args):
     else:
         raise RuntimeError(f"Unknown optimizer! {args.optim}")
 
+    # Create learning rate schedulers
+    schedulers = []
+    if hasattr(args, 'lr_decay_type') and args.lr_decay_type != "none":
+        for opt in optimizers:
+            if args.lr_decay_type == "step":
+                scheduler = optim.lr_scheduler.StepLR(opt, step_size=args.lr_decay_step, gamma=args.lr_decay_rate)
+            elif args.lr_decay_type == "exponential":
+                scheduler = optim.lr_scheduler.ExponentialLR(opt, gamma=args.lr_decay_rate)
+            elif args.lr_decay_type == "cosine":
+                scheduler = optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.num_epochs)
+            elif args.lr_decay_type == "multistep":
+                milestones = args.lr_decay_milestones if hasattr(args, 'lr_decay_milestones') and args.lr_decay_milestones else [args.lr_decay_step]
+                scheduler = optim.lr_scheduler.MultiStepLR(opt, milestones=milestones, gamma=args.lr_decay_rate)
+            else:
+                raise RuntimeError(f"Unknown lr_decay_type: {args.lr_decay_type}")
+            schedulers.append(scheduler)
+        log.info(f"Using learning rate decay: {args.lr_decay_type} with rate {args.lr_decay_rate}")
+    else:
+        log.info("No learning rate decay (lr_decay_type is 'none' or not specified)")
+
     # optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=3e-4)
 
     results = []
@@ -551,7 +571,17 @@ def main(args):
         if args.scale_down_top:
             model.scale_down_top()
 
-        if epoch % args.eval_interval == 0:
+        # Update learning rate
+        if schedulers:
+            for scheduler in schedulers:
+                scheduler.step()
+            if epoch % args.eval_interval == 0:
+                all_lrs = []
+                for scheduler in schedulers:
+                    all_lrs.extend(scheduler.get_last_lr())
+                lr_str = ', '.join([f'{lr:.6f}' for lr in all_lrs])
+                log.info(f'Epoch [{epoch}/{args.num_epochs}], Loss: {loss.item():.4f}, LR: [{lr_str}]')
+        elif epoch % args.eval_interval == 0:
             log.info(f'Epoch [{epoch}/{args.num_epochs}], Loss: {loss.item():.4f}')
 
     # save the stats_tracker
