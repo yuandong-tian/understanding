@@ -97,7 +97,7 @@ def load_non_abelian_collection(M, dk_max=2):
     # Load the non-abelian collection from the file
     # Get all non-abelian group with max_k d_k == dk_max
     # Get the current folder of this script
-    json_file = "/private/home/yuandong/luckmatters/ssl/real-dataset/cogo/smallgroups_nonabelian_upto_128.jsonl"
+    json_file = "smallgroups_nonabelian_upto_128.jsonl"
     data = [ json.loads(line) for line in open(json_file, "r") ]
 
     # find rec so that rec["irrep_degrees"] == dk_max
