@@ -2,7 +2,7 @@
 
 This codebase is used in the following two papers
 + [1] Y. Tian, Composing Global Solutions to Reasoning Tasks via Algebraic Objects in Neural Nets, [NeurIPS 2025](https://arxiv.org/abs/2410.01779)
-+ [2] Y. Tian, Provable Scaling Laws of Feature Emergence from Learning Dynamics of Grokking, [arXiv:2509.21519](https://arxiv.org/abs/2509.21519)
++ [2] Y. Tian, Provable Scaling Laws of Feature Emergence from Learning Dynamics of Grokking, [arXiv:2509.21519](https://arxiv.org/abs/2509.21519), [microblog](https://x.com/tydsh/status/1973253958304145845), [comic](https://x.com/tydsh/status/1992806265245081970)
 
 For reproducing the results in [1], check `../README.md` in the parent directory. 
 
