@@ -369,14 +369,6 @@ class ModularAdditionNN(nn.Module):
                 self.W.weight[:] -= self.W.weight.mean(dim=1, keepdim=True) 
                 self.V.weight[:] -= self.V.weight.mean(dim=0, keepdim=True) 
 
-    def scale_down_top(self):
-        # Scale down the top layer
-        with torch.no_grad():
-            cnorm = self.V.weight.norm() 
-            if cnorm > 1:
-                self.V.weight[:] /= cnorm
-
-
 @hydra.main(config_path="config", config_name="dyn_madd.yaml")
 def main(args):
     # Set random seed for reproducibility
@@ -567,9 +559,6 @@ def main(args):
 
         if args.normalize:
             model.normalize()
-
-        if args.scale_down_top:
-            model.scale_down_top()
 
         # Update learning rate
         if schedulers:
