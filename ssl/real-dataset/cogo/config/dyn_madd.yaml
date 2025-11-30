@@ -32,12 +32,16 @@ init_save_range: 200
 eval_interval: 100
 normalize: false
 
-set_weight_reg : 1e-3
+# default is not to use ridge regression solver on the top level
+set_weight_reg: null 
+
+top_layer_init_multiplier: 1
+output_multiplier: 1
 
 num_of_ops: 2
 
-load_dataset_split : null
-load_initial_layerab : null
+load_dataset_split: null
+load_initial_layerab: null
 
 post_process: false
 

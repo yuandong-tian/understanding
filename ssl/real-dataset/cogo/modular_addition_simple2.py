@@ -178,9 +178,12 @@ class StatsTracker:
 
 # Define the neural network model
 class ModularAdditionNN(nn.Module):
-    def __init__(self, M, num_of_ops, hidden_size, activation="sqr", embed_trainable=False, use_bn=False, inverse_mat_layer_reg=None, other_layers=0, use_inner_product_act=False, use_complex_weights=False):
+    def __init__(self, M, num_of_ops, hidden_size, activation="sqr", embed_trainable=False, 
+                 use_bn=False, inverse_mat_layer_reg=None, other_layers=0, use_inner_product_act=False, 
+                 use_complex_weights=False, top_layer_init_multiplier=1, output_multiplier=1):
         super(ModularAdditionNN, self).__init__()
         self.use_complex_weights = use_complex_weights
+        self.output_multiplier = output_multiplier
         
         if not embed_trainable:
             self.embedding = nn.Embedding(M, M).requires_grad_(False)
@@ -196,6 +199,8 @@ class ModularAdditionNN(nn.Module):
 
         self.other_layers = nn.ModuleList([ nn.Linear(hidden_size, hidden_size, bias=False) for _ in range(other_layers) ])
         self.V = nn.Linear(hidden_size, M, bias=False)
+        with torch.no_grad():
+            self.V.weight *= top_layer_init_multiplier
 
         # Convert weights to complex if needed
         if use_complex_weights:
@@ -354,7 +359,7 @@ class ModularAdditionNN(nn.Module):
             x = x + layer(x)
             x = self.act_fun(x)
 
-        output = self.V(x)
+        output = self.V(x) * self.output_multiplier
         
         return [output]
 
@@ -450,7 +455,9 @@ def main(args):
                               inverse_mat_layer_reg=args.set_weight_reg, 
                               other_layers=args.other_layers,
                               use_inner_product_act=args.use_inner_product_act,
-                              use_complex_weights=args.use_complex_weights)
+                              use_complex_weights=args.use_complex_weights, 
+                              top_layer_init_multiplier=args.top_layer_init_multiplier,
+                              output_multiplier=args.output_multiplier)
 
     model = model.cuda()
 
