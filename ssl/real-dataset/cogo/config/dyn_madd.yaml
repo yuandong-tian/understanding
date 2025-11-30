@@ -64,3 +64,9 @@ group_collection_max_dk: 0
 use_inner_product_act: false
 
 use_complex_weights: false
+
+# Transformer options
+model_type: "mlp" # mlp or transformer
+nhead: 4
+num_layers: 2
+dim_feedforward: 2048

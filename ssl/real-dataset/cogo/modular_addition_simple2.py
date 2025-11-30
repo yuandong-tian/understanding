@@ -177,6 +177,56 @@ class StatsTracker:
         torch.save(self.stats, filename)
 
 # Define the neural network model
+class ModularAdditionTransformer(nn.Module):
+    def __init__(self, M, num_of_ops, hidden_size, nhead=4, num_layers=2, dim_feedforward=2048, 
+                 activation="relu", top_layer_init_multiplier=1):
+        super(ModularAdditionTransformer, self).__init__()
+        self.embedding = nn.Embedding(M, hidden_size)
+        
+        # Positional encoding (learnable)
+        self.pos_encoder = nn.Parameter(torch.zeros(1, num_of_ops, hidden_size))
+        nn.init.normal_(self.pos_encoder, mean=0, std=0.02)
+
+        # Handle activation
+        if activation == "sqr":
+            activation_fn = lambda x: x.pow(2)
+        elif activation == "relusqr":
+            activation_fn = lambda x: F.relu(x).pow(2)
+        elif activation == "silu":
+            activation_fn = F.silu
+        else:
+            activation_fn = activation
+
+        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=nhead, 
+                                                   dim_feedforward=dim_feedforward, 
+                                                   dropout=0.0, activation=activation_fn,
+                                                   batch_first=True)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        
+        self.V = nn.Linear(hidden_size, M, bias=False)
+        
+        with torch.no_grad():
+            self.V.weight *= top_layer_init_multiplier
+
+        self.M = M
+        self.num_of_ops = num_of_ops
+
+    def forward(self, x, Y=None, stats_tracker=None):
+        # x: [batch_size, seq_len]
+        x = self.embedding(x) + self.pos_encoder
+        x = self.transformer_encoder(x)
+        
+        # Average pooling or take the last token? 
+        # Usually for classification/prediction tasks with transformer, we can use a CLS token or average.
+        # Here let's try averaging over the sequence length.
+        x = x.mean(dim=1)
+        
+        output = self.V(x)
+        return [output]
+
+    def normalize(self):
+        pass
+
 class ModularAdditionNN(nn.Module):
     def __init__(self, M, num_of_ops, hidden_size, activation="sqr", embed_trainable=False, 
                  use_bn=False, inverse_mat_layer_reg=None, other_layers=0, use_inner_product_act=False, 
@@ -448,16 +498,26 @@ def main(args):
     if args.set_weight_reg is not None:
         assert args.loss_func == "mse", "only MSE loss can use set_weight_reg != None" 
 
-    model = ModularAdditionNN(group_order, args.num_of_ops, args.hidden_size, 
-                              embed_trainable=args.embed_trainable,
-                              activation=args.activation, 
-                              use_bn=args.use_bn, 
-                              inverse_mat_layer_reg=args.set_weight_reg, 
-                              other_layers=args.other_layers,
-                              use_inner_product_act=args.use_inner_product_act,
-                              use_complex_weights=args.use_complex_weights, 
-                              top_layer_init_multiplier=args.top_layer_init_multiplier,
-                              output_multiplier=args.output_multiplier)
+    if args.model_type == "mlp":
+        model = ModularAdditionNN(group_order, args.num_of_ops, args.hidden_size, 
+                                  embed_trainable=args.embed_trainable,
+                                  activation=args.activation, 
+                                  use_bn=args.use_bn, 
+                                  inverse_mat_layer_reg=args.set_weight_reg, 
+                                  other_layers=args.other_layers,
+                                  use_inner_product_act=args.use_inner_product_act,
+                                  use_complex_weights=args.use_complex_weights, 
+                                  top_layer_init_multiplier=args.top_layer_init_multiplier,
+                                  output_multiplier=args.output_multiplier)
+
+    elif args.model_type == "transformer":
+        model = ModularAdditionTransformer(group_order, args.num_of_ops, args.hidden_size,
+                                           nhead=args.nhead, num_layers=args.num_layers,
+                                           dim_feedforward=args.dim_feedforward,
+                                           activation=args.activation,
+                                           top_layer_init_multiplier=args.top_layer_init_multiplier)
+    else:
+        raise RuntimeError(f"Unknown model_type = {args.model_type}")
 
     model = model.cuda()
 
