@@ -69,4 +69,4 @@ use_complex_weights: false
 model_type: "mlp" # mlp or transformer
 nhead: 4
 num_layers: 2
-dim_feedforward: 2048
+dim_ffn: 2048

@@ -178,7 +178,7 @@ class StatsTracker:
 
 # Define the neural network model
 class ModularAdditionTransformer(nn.Module):
-    def __init__(self, M, num_of_ops, hidden_size, nhead=4, num_layers=2, dim_feedforward=2048, 
+    def __init__(self, M, num_of_ops, hidden_size, nhead=4, num_layers=2, dim_ffn=2048, 
                  activation="relu", top_layer_init_multiplier=1):
         super(ModularAdditionTransformer, self).__init__()
         self.embedding = nn.Embedding(M, hidden_size)
@@ -198,7 +198,7 @@ class ModularAdditionTransformer(nn.Module):
             activation_fn = activation
 
         encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=nhead, 
-                                                   dim_feedforward=dim_feedforward, 
+                                                   dim_feedforward=dim_ffn, 
                                                    dropout=0.0, activation=activation_fn,
                                                    batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
@@ -513,7 +513,7 @@ def main(args):
     elif args.model_type == "transformer":
         model = ModularAdditionTransformer(group_order, args.num_of_ops, args.hidden_size,
                                            nhead=args.nhead, num_layers=args.num_layers,
-                                           dim_feedforward=args.dim_feedforward,
+                                           dim_ffn=args.dim_ffn,
                                            activation=args.activation,
                                            top_layer_init_multiplier=args.top_layer_init_multiplier)
     else:
