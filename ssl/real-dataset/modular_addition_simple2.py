@@ -104,10 +104,10 @@ class ModularAdditionNN(nn.Module):
             self.layerb.weight[:] -= self.layerb.weight.mean(dim=1, keepdim=True) 
             self.layerc.weight[:] -= self.layerc.weight.mean(dim=0, keepdim=True) 
 
-@hydra.main(config_path="config", config_name="dyn_madd.yaml")
+@hydra.main(config_path="config", config_name="dyn_madd.yaml", version_base="1.1")
 def main(args):
     # Set random seed for reproducibility
-    log.info(common_utils.print_info(args))
+    log.info(common_utils.print_info(args, os.path.dirname(os.path.abspath(__file__))))
     common_utils.set_all_seeds(args.seed)
     # torch.manual_seed(args.seed)
 

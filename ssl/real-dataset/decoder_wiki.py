@@ -209,9 +209,9 @@ def get_model_stats(train_batch_cnt, val_data, src_mask, model : nn.Module, args
 
     return dict(iter_num=train_batch_cnt, val_loss=val_loss, val_ppl=val_ppl, attn=attn, attn_entropy=attn_entropy)
 
-@hydra.main(config_path="config", config_name="decoder_wiki.yaml", version_base="1.1.1")
+@hydra.main(config_path="config", config_name="decoder_wiki.yaml", version_base="1.1")
 def main(args):
-    log.info(common_utils.print_info(args))
+    log.info(common_utils.print_info(args, os.path.dirname(os.path.abspath(__file__))))
     common_utils.set_all_seeds(args.seed)
 
     # load overrided configure file. 

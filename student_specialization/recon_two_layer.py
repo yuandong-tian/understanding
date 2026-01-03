@@ -303,7 +303,7 @@ def run(cfg):
     return stats
 
 
-@hydra.main(config_path='conf/config.yaml', strict=True)
+@hydra.main(config_path='conf/config.yaml', strict=True, version_base="1.1")
 def main(cfg):
     cmd_line = " ".join(sys.argv)
     log.info(f"{cmd_line}")

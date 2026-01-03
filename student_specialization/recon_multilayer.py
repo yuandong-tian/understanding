@@ -185,7 +185,7 @@ def parse_lr(lr_str):
 
     return lrs
 
-@hydra.main(config_path='conf/config_multilayer.yaml', strict=True)
+@hydra.main(config_path='conf/config_multilayer.yaml', strict=True, version_base="1.1")
 def main(args):
     cmd_line = " ".join(sys.argv)
     log.info(f"{cmd_line}")

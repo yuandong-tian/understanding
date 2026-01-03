@@ -231,9 +231,9 @@ def compute_contrastive_covariance(f1, f2, x1, x2, T, norm_type):
     return C_inter, C_intra, A, B
 
 
-@hydra.main(config_path="config", config_name="relu_2layer.yaml")
+@hydra.main(config_path="config", config_name="relu_2layer.yaml", version_base="1.1")
 def main(args):
-    log.info(common_utils.print_info(args))
+    log.info(common_utils.print_info(args, os.path.dirname(os.path.abspath(__file__))))
     common_utils.set_all_seeds(args.seed)
 
     gen = Generator(args.distri)

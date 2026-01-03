@@ -273,7 +273,7 @@ def print_corr(dataset, l, corrs):
 
 @hydra.main(config_path="config", config_name="decoder_only_hier.yaml", version_base="1.1")
 def main(args):
-    log.info(common_utils.print_info(args))
+    log.info(common_utils.print_info(args, os.path.dirname(os.path.abspath(__file__))))
     common_utils.set_all_seeds(args.seed)
 
     dataset = hydra.utils.instantiate(args.gen)

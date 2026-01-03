@@ -236,9 +236,9 @@ def find_optimal_delta(A, B, C, r=0.01, eps=0.001, nIter=100):
     return dA, dB, dC
 
 
-@hydra.main(config_path="config", config_name="sim_dyn.yaml")
+@hydra.main(config_path="config", config_name="sim_dyn.yaml", version_base="1.1")
 def main(args):
-    log.info(common_utils.print_info(args))
+    log.info(common_utils.print_info(args, os.path.dirname(os.path.abspath(__file__))))
     # common_utils.set_all_seeds(args.seed)
     torch.manual_seed(args.seed)
 

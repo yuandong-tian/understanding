@@ -360,9 +360,9 @@ _attr_multirun = {
   "common_options" : dict(topk_mean=1, topk=10, descending=True),
 }
 
-@hydra.main(config_path="config", config_name="bn_gen.yaml")
+@hydra.main(config_path="config", config_name="bn_gen.yaml", version_base="1.1")
 def main(args):
-    log.info(common_utils.print_info(args))
+    log.info(common_utils.print_info(args, os.path.dirname(os.path.abspath(__file__))))
     common_utils.set_all_seeds(args.seed)
 
     if args.dataset == "mnist":

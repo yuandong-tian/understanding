@@ -205,7 +205,7 @@ def batch2dict(batch):
 import logging
 log = logging.getLogger(__file__)
 
-@hydra.main(config_path="conf/hltm.yaml", strict=True)
+@hydra.main(config_path="conf/hltm.yaml", strict=True, version_base="1.1")
 def main(args):
     # torch.backends.cudnn.benchmark = True
     log.info(f"Working dir: {os.getcwd()}")
