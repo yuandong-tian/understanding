@@ -319,7 +319,8 @@ class ModularAdditionNN(nn.Module):
 
             x = self.act_fun(x)
 
-        self.x_before_layerc = x.clone()
+        if stats_tracker is not None:
+            self.x_before_layerc = x.detach()
 
         if stats_tracker is not None:
             x_zero_mean = x - x.mean(dim=0, keepdim=True)
@@ -430,6 +431,11 @@ def main(args):
     log.info(common_utils.print_info(args, os.path.dirname(os.path.abspath(__file__))))
     common_utils.set_all_seeds(args.seed)
     # torch.manual_seed(args.seed)
+    if getattr(args, "allow_tf32", False):
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        if hasattr(torch, "set_float32_matmul_precision"):
+            torch.set_float32_matmul_precision("high")
 
     scaling_law_correction = 1
 
@@ -573,11 +579,13 @@ def main(args):
     Y_train = F.one_hot(y_train.squeeze(), num_classes=group_order)
     Y_train = Y_train - 1.0 / group_order
 
-    stats_tracker = StatsTracker()
+    stats_tracker = StatsTracker() if getattr(args, "enable_stats_tracker", True) else None
+    stats_tracker_train_metrics_only = getattr(args, "stats_tracker_train_metrics_only", False)
 
     # Training loop
     for epoch in range(args.num_epochs):
-        stats_tracker.set_epoch(epoch)
+        if stats_tracker is not None:
+            stats_tracker.set_epoch(epoch)
         # Test the model
         train_accuracies, train_loss = test_model(model, X_train, y_train, args.loss_func)
         test_accuracies, test_loss = test_model(model, X_test, y_test, args.loss_func)
@@ -588,12 +596,13 @@ def main(args):
         log.info(f"Train Accuracy/Loss: {train_acc}/{train_loss}")
         log.info(f"Test Accuracy/Loss: {test_acc}/{test_loss}\n")
 
-        stats_tracker.update(**{
-            "train_acc": train_acc,
-            "test_acc": test_acc,
-            "train_loss": train_loss,
-            "test_loss": test_loss,
-        })
+        if stats_tracker is not None:
+            stats_tracker.update(**{
+                "train_acc": train_acc,
+                "test_acc": test_acc,
+                "train_loss": train_loss,
+                "test_loss": test_loss,
+            })
 
         if args.save_interval is not None and (epoch % args.save_interval == 0 or epoch < args.init_save_range):
             results.append(dict(epoch=epoch, train_acc=train_acc, test_acc=test_acc, train_loss=train_loss, test_loss=test_loss))
@@ -609,7 +618,11 @@ def main(args):
         [ opt.zero_grad() for opt in optimizers ]
         
         # Forward pass
-        outputs = model(X_train, Y=Y_train, stats_tracker=stats_tracker)
+        outputs = model(
+            X_train,
+            Y=Y_train,
+            stats_tracker=stats_tracker if (stats_tracker is not None and not stats_tracker_train_metrics_only) else None,
+        )
 
         # loss = criterion(outputs, y_train)
         loss = compute_loss(outputs, y_train, args.loss_func)
@@ -641,7 +654,8 @@ def main(args):
             log.info(f'Epoch [{epoch}/{args.num_epochs}], Loss: {loss.item():.4f}')
 
     # save the stats_tracker
-    stats_tracker.save("stats_tracker.pt")
+    if stats_tracker is not None:
+        stats_tracker.save("stats_tracker.pt")
 
     if args.post_process:
         # Process the data and save to a final file.

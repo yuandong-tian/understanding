@@ -4,6 +4,9 @@ seed: 0
 M: "127"
 hidden_size: 512
 learning_rate: 0.001
+allow_tf32: false
+enable_stats_tracker: true
+stats_tracker_train_metrics_only: true
 
 # Learning rate decay settings
 # lr_decay_type: "step" (decay by lr_decay_rate every lr_decay_step epochs)
