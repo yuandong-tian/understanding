@@ -526,6 +526,11 @@ def main(args):
         raise RuntimeError(f"Unknown model_type = {args.model_type}")
 
     model = model.cuda()
+    if getattr(args, "use_torch_compile", False):
+        if hasattr(torch, "compile"):
+            model = torch.compile(model)
+        else:
+            log.warning("torch.compile not available; continuing without compilation.")
 
     if args.optim == "sgd":
         optimizers = [optim.SGD(model.parameters(), lr=args.learning_rate, momentum=0.9, weight_decay=args.weight_decay)]

@@ -7,6 +7,7 @@ learning_rate: 0.001
 allow_tf32: false
 enable_stats_tracker: true
 stats_tracker_train_metrics_only: true
+use_torch_compile: false
 
 # Learning rate decay settings
 # lr_decay_type: "step" (decay by lr_decay_rate every lr_decay_step epochs)
