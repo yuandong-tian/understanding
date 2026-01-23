@@ -33,6 +33,7 @@ use_bn: false
 loss_func: "nll"
 save_interval: 1000
 init_save_range: 200
+save_final: true
 eval_interval: 100
 normalize: false
 

@@ -159,6 +159,10 @@ def test_model(model, X_test, y_test, loss_type):
 
     return corrects, loss
 
+def save_checkpoint(model, results, filename):
+    data = dict(model=model.state_dict(), results=results)
+    torch.save(data, filename)
+
 class StatsTracker:
     def __init__(self):
         self.stats = defaultdict(dict)
@@ -614,9 +618,7 @@ def main(args):
 
             filename = f"model{epoch:05}_train{train_acc:.2f}_loss{train_loss:.4f}_test{test_acc:.2f}_loss{test_loss:.4f}.pt" 
 
-            data = dict(model=model.state_dict(), results=results) 
-
-            torch.save(data, filename)
+            save_checkpoint(model, results, filename)
 
         model.train()
         
@@ -657,6 +659,29 @@ def main(args):
                 log.info(f'Epoch [{epoch}/{args.num_epochs}], Loss: {loss.item():.4f}, LR: [{lr_str}]')
         elif epoch % args.eval_interval == 0:
             log.info(f'Epoch [{epoch}/{args.num_epochs}], Loss: {loss.item():.4f}')
+
+    if args.save_final:
+        final_train_accuracies, final_train_loss = test_model(model, X_train, y_train, args.loss_func)
+        final_test_accuracies, final_test_loss = test_model(model, X_test, y_test, args.loss_func)
+
+        final_train_acc = final_train_accuracies[0]
+        final_test_acc = final_test_accuracies[0]
+
+        final_entry = dict(
+            epoch=args.num_epochs,
+            train_acc=final_train_acc,
+            test_acc=final_test_acc,
+            train_loss=final_train_loss,
+            test_loss=final_test_loss,
+        )
+        results.append(final_entry)
+
+        final_filename = (
+            f"model{args.num_epochs:05}_train{final_train_acc:.2f}_loss{final_train_loss:.4f}"
+            f"_test{final_test_acc:.2f}_loss{final_test_loss:.4f}_final.pt"
+        )
+        save_checkpoint(model, results, final_filename)
+        log.info(f"Saved final model: {final_filename}")
 
     # save the stats_tracker
     if stats_tracker is not None:
